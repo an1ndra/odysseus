@@ -1,0 +1,53 @@
+name: Sync upstream odysseus and redeploy
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge upstream main
+        id: sync
+        run: |
+          set -euo pipefail
+          git config user.name "odysseus-sync-bot"
+          git config user.email "odysseus-sync-bot@users.noreply.github.com"
+          git remote add upstream https://github.com/odysseus-dev/odysseus.git
+          git fetch --no-tags upstream main
+          upstream="$(git rev-parse FETCH_HEAD)"
+          echo "upstream=$upstream"
+          if git merge-base --is-ancestor "$upstream" HEAD; then
+            echo "Already up to date with upstream."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git merge --no-edit "$upstream"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push and trigger Dokploy build
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          WEBHOOK: ${{ secrets.DOKPLOY_WEBHOOK }}
+        run: |
+          set -euo pipefail
+          git push origin HEAD:main
+          code=$(curl -sS -o /tmp/dokploy.out -w '%{http_code}' -X POST "$WEBHOOK" -H 'Content-Type: application/json' -d '{"ref":"refs/heads/main","repository":{"full_name":"an1ndra/odysseus"}}')
+          echo "Dokploy webhook HTTP $code"
+          cat /tmp/dokploy.out || true
+          test "$code" -lt 400

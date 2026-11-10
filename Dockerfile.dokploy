@@ -1,0 +1,19 @@
+# Dokploy build wrapper for Odysseus.
+#
+# The upstream Docker image ships no `bubblewrap`, and Odysseus refuses to run its
+# shell/python/file tools without a verified sandbox (src/containment.py needs the
+# filesystem + process_tree dimensions, which only bubblewrap provides). So we take
+# the published upstream image and add the one missing package.
+#
+# The upstream CI publishes ghcr.io/odysseus-dev/odysseus:latest on every push to
+# main, so this tracks main closely. To build the full source tree instead, replace
+# this file with the upstream Dockerfile plus `bubblewrap` in the apt list.
+FROM ghcr.io/odysseus-dev/odysseus:latest
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bubblewrap \
+    && rm -rf /var/lib/apt/lists/*
+
+# Sanity check at build time: fail loudly instead of starting a container whose
+# shell tool can never work.
+RUN bwrap --version

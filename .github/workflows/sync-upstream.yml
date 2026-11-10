@@ -14,7 +14,8 @@ concurrency:
 
 env:
   DOKPLOY_URL: https://dokploy.hacksubset.com
-  DOKPLOY_APP_ID: GaxlmCubJ2Ur_Yi-GJFxZ
+  # Compose service "odysseus-compose" in project odysseus / production.
+  DOKPLOY_COMPOSE_ID: mPAAYf4-0ZMc6OHw_ePU4
 
 jobs:
   sync:
@@ -54,7 +55,7 @@ jobs:
           DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
         run: |
           set -euo pipefail
-          code=$(curl -sS -o /tmp/deploy.json -w "%{http_code}" -X POST "$DOKPLOY_URL/api/application.deploy" -H "x-api-key: $DOKPLOY_API_KEY" -H "Content-Type: application/json" -d "{\"applicationId\":\"$DOKPLOY_APP_ID\"}")
-          echo "Dokploy deploy HTTP $code"
+          code=$(curl -sS -o /tmp/deploy.json -w "%{http_code}" -X POST "$DOKPLOY_URL/api/compose.deploy" -H "x-api-key: $DOKPLOY_API_KEY" -H "Content-Type: application/json" -d "{\"composeId\":\"$DOKPLOY_COMPOSE_ID\"}")
+          echo "Dokploy compose deploy HTTP $code"
           cat /tmp/deploy.json || true
           test "$code" -lt 400

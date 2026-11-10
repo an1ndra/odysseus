@@ -3,17 +3,19 @@
 # Dokploy → Create Service → Docker Compose
 #   Repository  : an1ndra/odysseus
 #   Branch      : main
-#   Compose Path: docker-compose.dokploy.yml
+#   Compose Path: ./docker-compose.dokploy.yml
 #
 # Differences from the upstream docker-compose.yml:
 #   * builds Dockerfile.dokploy (upstream image + bubblewrap) instead of `build: .`
 #   * reuses the existing `odysseus-data` volume as an *external* volume, so the
-#     admin account, SQLite DB, sessions and uploads survive the switch from the
-#     former Dokploy Application service
-#   * relaxes the container sandbox (seccomp/apparmor unconfined + SYS_ADMIN) so
-#     bubblewrap can create the namespaces the shell/agent tools require; without
-#     this every `bash`/`python` tool call fails with
-#     "containment unavailable (filesystem, process_tree)"
+#     admin account, SQLite DB, sessions and uploads survive redeploys and the
+#     switch from the former Dokploy Application service
+#   * relaxes the container sandbox (seccomp/apparmor unconfined + SYS_ADMIN) and
+#     runs the app as root inside the container, because bubblewrap must create
+#     namespaces and this host refuses unprivileged user namespaces
+#     ("write failed /proc/self/uid_map: Operation not permitted" as uid 1000).
+#     Without this every `bash`/`python` tool call fails with
+#     "containment unavailable (filesystem, process_tree)".
 #   * Traefik labels are declared here. This Dokploy install has no ACME resolver
 #     configured, so there is no certResolver label: TLS is served from the
 #     Cloudflare origin certificate and terminated at the Cloudflare edge.
@@ -34,8 +36,10 @@ services:
       # SearXNG runs as a separate Dokploy application on dokploy-network.
       SEARXNG_INSTANCE: "http://searxng-pxaeg7:8080"
       ODYSSEUS_ADMIN_USER: "admin"
-      PUID: "1000"
-      PGID: "1000"
+      # 0 = stay root in the container: bwrap needs CAP_SYS_ADMIN to build its
+      # namespace sandbox for the shell/agent tools.
+      PUID: "0"
+      PGID: "0"
     volumes:
       # Everything Odysseus persists: app.db, settings (incl. model endpoints and
       # their API keys), uploads, memory, chroma cache. Must survive redeploys.

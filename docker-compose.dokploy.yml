@@ -16,6 +16,7 @@
 #     ("write failed /proc/self/uid_map: Operation not permitted" as uid 1000).
 #     Without this every `bash`/`python` tool call fails with
 #     "containment unavailable (filesystem, process_tree)".
+#   * bundles ChromaDB (vector memory / document RAG) as a compose service.
 #   * Traefik labels are declared here. This Dokploy install has no ACME resolver
 #     configured, so there is no certResolver label: TLS is served from the
 #     Cloudflare origin certificate and terminated at the Cloudflare edge.
@@ -35,6 +36,9 @@ services:
       OAUTH_REDIRECT_BASE_URL: "https://odysseus.hacksubset.com"
       # SearXNG runs as a separate Dokploy application on dokploy-network.
       SEARXNG_INSTANCE: "http://searxng-pxaeg7:8080"
+      # Vector store, provided by the chromadb service below.
+      CHROMADB_HOST: "chromadb"
+      CHROMADB_PORT: "8000"
       ODYSSEUS_ADMIN_USER: "admin"
       # The shell/agent tools refuse to spawn a process until a workspace is set.
       ODYSSEUS_WORKSPACE_DEFAULT: "/app/data/agent_workspace"
@@ -54,6 +58,8 @@ services:
       - SYS_ADMIN
     expose:
       - "7000"
+    depends_on:
+      - chromadb
     restart: unless-stopped
     networks:
       - dokploy-network
@@ -65,11 +71,22 @@ services:
       traefik.http.routers.odysseus.tls: "true"
       traefik.http.services.odysseus.loadbalancer.server.port: "7000"
 
+  chromadb:
+    image: chromadb/chroma:1.5.9
+    environment:
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      - chroma-data:/data
+    restart: unless-stopped
+    networks:
+      - dokploy-network
+
 volumes:
   odysseus-data:
     external: true
     name: odysseus-data
   odysseus-logs:
+  chroma-data:
 
 networks:
   dokploy-network:

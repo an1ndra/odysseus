@@ -12,6 +12,10 @@ concurrency:
   group: sync-upstream
   cancel-in-progress: false
 
+env:
+  DOKPLOY_URL: https://dokploy.hacksubset.com
+  DOKPLOY_APP_ID: GaxlmCubJ2Ur_Yi-GJFxZ
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -40,14 +44,17 @@ jobs:
           git merge --no-edit "$upstream"
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Push and trigger Dokploy build
+      - name: Push merged main
+        if: steps.sync.outputs.changed == 'true'
+        run: git push origin HEAD:main
+
+      - name: Trigger Dokploy rebuild
         if: steps.sync.outputs.changed == 'true'
         env:
-          WEBHOOK: ${{ secrets.DOKPLOY_WEBHOOK }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
         run: |
           set -euo pipefail
-          git push origin HEAD:main
-          code=$(curl -sS -o /tmp/dokploy.out -w '%{http_code}' -X POST "$WEBHOOK" -H 'Content-Type: application/json' -d '{"ref":"refs/heads/main","repository":{"full_name":"an1ndra/odysseus"}}')
-          echo "Dokploy webhook HTTP $code"
-          cat /tmp/dokploy.out || true
+          code=$(curl -sS -o /tmp/deploy.json -w "%{http_code}" -X POST "$DOKPLOY_URL/api/application.deploy" -H "x-api-key: $DOKPLOY_API_KEY" -H "Content-Type: application/json" -d "{\"applicationId\":\"$DOKPLOY_APP_ID\"}")
+          echo "Dokploy deploy HTTP $code"
+          cat /tmp/deploy.json || true
           test "$code" -lt 400

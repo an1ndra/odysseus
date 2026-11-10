@@ -1,0 +1,70 @@
+# Dokploy-ready Docker Compose for Odysseus (self-hosted AI workspace).
+#
+# Dokploy → Create Service → Docker Compose
+#   Repository  : an1ndra/odysseus
+#   Branch      : main
+#   Compose Path: docker-compose.dokploy.yml
+#
+# Differences from the upstream docker-compose.yml:
+#   * builds Dockerfile.dokploy (upstream image + bubblewrap) instead of `build: .`
+#   * reuses the existing `odysseus-data` volume as an *external* volume, so the
+#     admin account, SQLite DB, sessions and uploads survive the switch from the
+#     former Dokploy Application service
+#   * relaxes the container sandbox (seccomp/apparmor unconfined + SYS_ADMIN) so
+#     bubblewrap can create the namespaces the shell/agent tools require; without
+#     this every `bash`/`python` tool call fails with
+#     "containment unavailable (filesystem, process_tree)"
+#   * Traefik labels are declared here. This Dokploy install has no ACME resolver
+#     configured, so there is no certResolver label: TLS is served from the
+#     Cloudflare origin certificate and terminated at the Cloudflare edge.
+#   * no published host ports; the app is reached through Traefik on dokploy-network.
+
+services:
+  odysseus:
+    build:
+      context: .
+      dockerfile: Dockerfile.dokploy
+    image: odysseus-dokploy:latest
+    environment:
+      AUTH_ENABLED: "true"
+      LOCALHOST_BYPASS: "false"
+      SECURE_COOKIES: "true"
+      ALLOWED_ORIGINS: "https://odysseus.hacksubset.com"
+      OAUTH_REDIRECT_BASE_URL: "https://odysseus.hacksubset.com"
+      # SearXNG runs as a separate Dokploy application on dokploy-network.
+      SEARXNG_INSTANCE: "http://searxng-pxaeg7:8080"
+      ODYSSEUS_ADMIN_USER: "admin"
+      PUID: "1000"
+      PGID: "1000"
+    volumes:
+      # Everything Odysseus persists: app.db, settings (incl. model endpoints and
+      # their API keys), uploads, memory, chroma cache. Must survive redeploys.
+      - odysseus-data:/app/data
+      - odysseus-logs:/app/logs
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    cap_add:
+      - SYS_ADMIN
+    expose:
+      - "7000"
+    restart: unless-stopped
+    networks:
+      - dokploy-network
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: dokploy-network
+      traefik.http.routers.odysseus.rule: Host(`odysseus.hacksubset.com`)
+      traefik.http.routers.odysseus.entrypoints: websecure
+      traefik.http.routers.odysseus.tls: "true"
+      traefik.http.services.odysseus.loadbalancer.server.port: "7000"
+
+volumes:
+  odysseus-data:
+    external: true
+    name: odysseus-data
+  odysseus-logs:
+
+networks:
+  dokploy-network:
+    external: true
